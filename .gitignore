@@ -3,6 +3,7 @@
 
 # Node modules
 node_modules/
+.claude/
 
 # 系统文件
 .DS_Store
