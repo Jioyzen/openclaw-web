@@ -1,5 +1,6 @@
 # 环境配置（包含敏感信息）
 .env
+.gitignore
 
 # Node modules
 node_modules/
