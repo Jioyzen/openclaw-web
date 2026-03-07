@@ -1,0 +1,847 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>OpenClaw WebUI</title>
+  <script src="https://cdn.tailwindcss.com"></script>
+  <!-- Markdown 渲染 -->
+  <script src="https://cdn.jsdelivr.net/npm/marked/marked.min.js"></script>
+  <!-- 代码高亮 -->
+  <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/highlight.js@11.9.0/styles/github.min.css">
+  <script src="https://cdn.jsdelivr.net/npm/highlight.js@11.9.0/lib/highlight.min.js"></script>
+  <script>
+    tailwind.config = {
+      theme: {
+        extend: {
+          colors: {
+            'user-bubble': '#E6E6FA',
+            'user-bubble-text': '#334155',
+            'brand': {
+              50: '#eef2ff', 100: '#e0e7ff', 200: '#c7d2fe', 300: '#a5b4fc',
+              400: '#818cf8', 500: '#6366f1', 600: '#4f46e5', 700: '#4338ca',
+            },
+          },
+        }
+      }
+    }
+  </script>
+  <style>
+    @keyframes fadeIn { from { opacity: 0; } to { opacity: 1; } }
+    @keyframes slideUp { from { opacity: 0; transform: translateY(8px); } to { opacity: 1; transform: translateY(0); } }
+    @keyframes pulseSoft { 0%, 100% { opacity: 0.6; } 50% { opacity: 1; } }
+
+    .chat-scroll::-webkit-scrollbar { width: 6px; }
+    .chat-scroll::-webkit-scrollbar-track { background: transparent; }
+    .chat-scroll::-webkit-scrollbar-thumb { background: #d1d5db; border-radius: 3px; }
+
+    .sidebar-scroll::-webkit-scrollbar { width: 4px; }
+    .sidebar-scroll::-webkit-scrollbar-track { background: transparent; }
+    .sidebar-scroll::-webkit-scrollbar-thumb { background: #e5e7eb; border-radius: 2px; }
+
+    .chat-textarea { field-sizing: content; min-height: 24px; max-height: 160px; }
+
+    /* Markdown 渲染样式 */
+    .markdown-content { line-height: 1.7; }
+    .markdown-content p { margin: 0 0 1em 0; }
+    .markdown-content p:last-child { margin-bottom: 0; }
+    .markdown-content h1, .markdown-content h2, .markdown-content h3,
+    .markdown-content h4, .markdown-content h5, .markdown-content h6 {
+      margin: 1.5em 0 0.5em 0; font-weight: 600; line-height: 1.3;
+    }
+    .markdown-content h1 { font-size: 1.5em; border-bottom: 1px solid #e5e7eb; padding-bottom: 0.3em; }
+    .markdown-content h2 { font-size: 1.3em; border-bottom: 1px solid #e5e7eb; padding-bottom: 0.3em; }
+    .markdown-content h3 { font-size: 1.15em; }
+    .markdown-content ul, .markdown-content ol { margin: 0.5em 0; padding-left: 1.5em; }
+    .markdown-content li { margin: 0.25em 0; }
+    .markdown-content li > ul, .markdown-content li > ol { margin: 0.1em 0; }
+    .markdown-content blockquote {
+      margin: 0.5em 0; padding: 0.5em 1em;
+      border-left: 4px solid #6366f1; background: #f8fafc; color: #475569;
+    }
+    .markdown-content code {
+      background: #f1f5f9; padding: 0.15em 0.4em; border-radius: 4px;
+      font-size: 0.9em; font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
+    }
+    .markdown-content pre {
+      margin: 0.75em 0; padding: 0; border-radius: 8px; overflow: hidden;
+      background: #f8fafc; border: 1px solid #e2e8f0;
+    }
+    .markdown-content pre code {
+      display: block; padding: 1em; background: transparent;
+      overflow-x: auto; font-size: 0.85em; line-height: 1.5;
+    }
+    .markdown-content table {
+      margin: 0.75em 0; border-collapse: collapse; width: 100%; font-size: 0.9em;
+    }
+    .markdown-content th, .markdown-content td {
+      border: 1px solid #e2e8f0; padding: 0.5em 0.75em; text-align: left;
+    }
+    .markdown-content th { background: #f8fafc; font-weight: 600; }
+    .markdown-content tr:nth-child(even) { background: #f8fafc; }
+    .markdown-content hr { margin: 1.5em 0; border: none; border-top: 1px solid #e5e7eb; }
+    .markdown-content a { color: #6366f1; text-decoration: underline; }
+    .markdown-content a:hover { color: #4f46e5; }
+    .markdown-content img { max-width: 100%; border-radius: 8px; margin: 0.5em 0; }
+  </style>
+</head>
+
+<body class="bg-white min-h-screen font-sans antialiased">
+  <div class="flex h-screen overflow-hidden">
+
+    <!-- 左侧边栏 -->
+    <aside class="hidden md:flex flex-col w-64 lg:w-72 bg-white border-r border-slate-200 flex-shrink-0">
+      <div class="flex items-center gap-2.5 p-4 border-b border-slate-100">
+        <div class="w-8 h-8 rounded-lg bg-gradient-to-br from-brand-500 to-brand-600 flex items-center justify-center">
+          <svg class="w-4 h-4 text-white" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2">
+            <path stroke-linecap="round" stroke-linejoin="round" d="M8 10h.01M12 10h.01M16 10h.01M9 16H5a2 2 0 01-2-2V6a2 2 0 012-2h14a2 2 0 012 2v8a2 2 0 01-2 2h-5l-5 5v-5z" />
+          </svg>
+        </div>
+        <span class="text-slate-800 font-semibold text-sm">OpenClaw</span>
+      </div>
+
+      <div class="flex-1 overflow-y-auto sidebar-scroll p-3">
+        <div class="mb-2 px-2">
+          <span class="text-xs font-medium text-slate-400 uppercase tracking-wider">助手列表</span>
+        </div>
+        <nav id="agentList" class="space-y-1">
+          <div class="px-3 py-8 text-center text-slate-400 text-sm">加载中...</div>
+        </nav>
+      </div>
+    </aside>
+
+    <!-- 主区域 -->
+    <main class="flex-1 flex flex-col min-w-0 bg-slate-50">
+
+      <!-- 顶部 Header -->
+      <header class="sticky top-0 z-30 backdrop-blur-xl bg-white/80 border-b border-slate-200/60">
+        <div class="flex items-center justify-between h-14 px-4">
+          <div class="flex items-center gap-2">
+            <div id="currentAgentEmoji" class="w-8 h-8 rounded-lg bg-brand-100 flex items-center justify-center text-lg">🤖</div>
+            <div>
+              <h1 id="currentAgentName" class="text-sm font-semibold text-slate-800">选择助手</h1>
+              <p id="currentAgentInfo" class="text-xs text-slate-400">OpenClaw WebUI</p>
+            </div>
+          </div>
+          <button id="clearBtn" class="hidden p-2 rounded-lg hover:bg-red-50 transition-colors group" title="清空对话">
+            <svg class="w-5 h-5 text-slate-400 group-hover:text-red-500" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2">
+              <path stroke-linecap="round" stroke-linejoin="round" d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" />
+            </svg>
+          </button>
+        </div>
+      </header>
+
+      <!-- 聊天区域 -->
+      <div id="chatContainer" class="chat-scroll flex-1 overflow-y-auto">
+        <div class="welcome flex flex-col items-center justify-center h-full min-h-[50vh] px-6 animate-fade-in">
+          <div class="w-16 h-16 rounded-2xl bg-gradient-to-br from-brand-500 to-brand-600 flex items-center justify-center shadow-xl shadow-brand-500/25 mb-5">
+            <svg class="w-8 h-8 text-white" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="1.5">
+              <path stroke-linecap="round" stroke-linejoin="round" d="M9.813 15.904L9 18.75l-.813-2.846a4.5 4.5 0 00-3.09-3.09L2.25 12l2.846-.813a4.5 4.5 0 003.09-3.09L9 5.25l.813 2.846a4.5 4.5 0 003.09 3.09L15.75 12l-2.846.813a4.5 4.5 0 00-3.09 3.09z" />
+            </svg>
+          </div>
+          <h2 class="text-xl font-semibold text-slate-800 mb-2">开始对话</h2>
+          <p class="text-slate-500 text-center max-w-sm text-sm leading-relaxed">从左侧选择一个 AI 助手开始对话</p>
+        </div>
+      </div>
+
+      <!-- 输入区域 -->
+      <div class="sticky bottom-0 z-20 px-4 pb-4 pt-2 bg-gradient-to-t from-slate-50 via-slate-50/95 to-transparent">
+        <div class="max-w-3xl mx-auto">
+          <!-- 附件预览区域 -->
+          <div id="attachmentPreview" class="hidden mb-2 p-2 bg-white rounded-xl border border-slate-200">
+            <div class="flex flex-wrap gap-2" id="previewContainer"></div>
+          </div>
+          <div class="relative bg-white rounded-2xl shadow-lg border border-slate-200/60">
+            <div class="flex items-end gap-2 p-3">
+              <!-- 文件上传按钮 -->
+              <input type="file" id="fileInput" class="hidden" multiple accept="image/*,.txt,.md,.csv,.json,.pdf,.doc,.docx,.xls,.xlsx,.ppt,.pptx">
+              <button id="attachBtn" class="flex-shrink-0 w-10 h-10 rounded-xl bg-slate-100 hover:bg-slate-200 text-slate-500 hover:text-slate-700 flex items-center justify-center transition-all duration-200" title="上传图片或文件">
+                <svg class="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2">
+                  <path stroke-linecap="round" stroke-linejoin="round" d="M15.172 7l-6.586 6.586a2 2 0 102.828 2.828l6.414-6.586a4 4 0 00-5.656-5.656l-6.415 6.585a6 6 0 108.486 8.486L20.5 13" />
+                </svg>
+              </button>
+              <textarea id="messageInput" placeholder="输入消息... (支持粘贴图片)" rows="1" class="chat-textarea flex-1 resize-none bg-transparent border-0 text-slate-800 placeholder-slate-400 focus:outline-none text-[15px] leading-relaxed py-2 px-1"></textarea>
+              <button id="sendBtn" class="flex-shrink-0 w-10 h-10 rounded-xl bg-brand-500 hover:bg-brand-600 disabled:bg-slate-200 disabled:cursor-not-allowed text-white flex items-center justify-center transition-all duration-200">
+                <svg id="sendIcon" class="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2">
+                  <path stroke-linecap="round" stroke-linejoin="round" d="M6 12L3.269 3.126A59.768 59.768 0 0121.485 12 59.77 59.77 0 013.27 20.876L5.999 12zm0 0h7.5" />
+                </svg>
+                <svg id="loadingIcon" class="w-5 h-5 hidden animate-spin" fill="none" viewBox="0 0 24 24">
+                  <circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"></circle>
+                  <path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
+                </svg>
+              </button>
+            </div>
+          </div>
+          <p class="text-center text-xs text-slate-400 mt-2">Enter 发送 · Shift+Enter 换行 · 支持图片/文件</p>
+        </div>
+      </div>
+    </main>
+  </div>
+
+  <script>
+    // ==================== Markdown 渲染配置 ====================
+    marked.setOptions({
+      highlight: function(code, lang) {
+        if (lang && hljs.getLanguage(lang)) {
+          try { return hljs.highlight(code, { language: lang }).value; }
+          catch (e) {}
+        }
+        return hljs.highlightAuto(code).value;
+      },
+      breaks: true,
+      gfm: true
+    });
+
+    // 渲染 Markdown 内容
+    function renderMarkdown(text) {
+      if (!text) return '';
+      try {
+        return marked.parse(text);
+      } catch (e) {
+        console.error('Markdown 渲染错误:', e);
+        return escapeHtml(text);
+      }
+    }
+
+    // ==================== 配置常量 ====================
+    const STORAGE_PREFIX = 'openclaw_chat_history_';
+    const INITIAL_RENDER_COUNT = 20;    // 初始渲染消息数
+    const LOAD_MORE_COUNT = 20;         // 每次加载更多消息数
+
+    // ==================== LocalStorage 持久化工具 ====================
+    function getStorageKey(agentId) {
+      return STORAGE_PREFIX + agentId;
+    }
+
+    function saveHistory(agentId, historyData) {
+      try {
+        localStorage.setItem(getStorageKey(agentId), JSON.stringify(historyData));
+      } catch (e) {
+        console.error('保存历史失败:', e);
+      }
+    }
+
+    function loadHistory(agentId) {
+      try {
+        const data = localStorage.getItem(getStorageKey(agentId));
+        return data ? JSON.parse(data) : [];
+      } catch (e) {
+        console.error('加载历史失败:', e);
+        return [];
+      }
+    }
+
+    function clearHistory(agentId) {
+      try {
+        localStorage.removeItem(getStorageKey(agentId));
+      } catch (e) {
+        console.error('清空历史失败:', e);
+      }
+    }
+
+    // ==================== 状态管理 ====================
+    let agents = [];
+    let currentAgent = null;
+    let allHistory = [];              // 全量历史数据
+    let visibleStartIndex = 0;        // 当前可见消息的起始索引
+    let isLoading = false;
+    let isLoadingMore = false;        // 是否正在加载更多历史
+    let attachments = [];             // 当前附件列表
+
+    // DOM
+    const chatContainer = document.getElementById('chatContainer');
+    const messageInput = document.getElementById('messageInput');
+    const sendBtn = document.getElementById('sendBtn');
+    const sendIcon = document.getElementById('sendIcon');
+    const loadingIcon = document.getElementById('loadingIcon');
+    const agentList = document.getElementById('agentList');
+    const currentAgentEmoji = document.getElementById('currentAgentEmoji');
+    const currentAgentName = document.getElementById('currentAgentName');
+    const currentAgentInfo = document.getElementById('currentAgentInfo');
+    const clearBtn = document.getElementById('clearBtn');
+    const attachBtn = document.getElementById('attachBtn');
+    const fileInput = document.getElementById('fileInput');
+    const attachmentPreview = document.getElementById('attachmentPreview');
+    const previewContainer = document.getElementById('previewContainer');
+
+    // ==================== 文件处理 ====================
+    const MAX_FILE_SIZE = 20 * 1024 * 1024; // 20MB
+    const SUPPORTED_IMAGE_TYPES = ['image/jpeg', 'image/png', 'image/gif', 'image/webp'];
+    const SUPPORTED_DOC_EXT = ['.pdf', '.doc', '.docx', '.xls', '.xlsx', '.ppt', '.pptx', '.txt', '.md', '.json', '.csv', '.xml', '.html', '.js', '.ts', '.py', '.java', '.c', '.cpp', '.h', '.css', '.sql', '.yaml', '.yml', '.log'];
+
+    function getFileExtension(filename) {
+      const idx = filename.lastIndexOf('.');
+      return idx >= 0 ? filename.slice(idx).toLowerCase() : '';
+    }
+
+    function isImageFile(file) {
+      return SUPPORTED_IMAGE_TYPES.includes(file.type);
+    }
+
+    function isSupportedFile(file) {
+      if (isImageFile(file)) return true;
+      const ext = getFileExtension(file.name);
+      return SUPPORTED_DOC_EXT.includes(ext);
+    }
+
+    // 添加附件
+    function addAttachment(file) {
+      if (file.size > MAX_FILE_SIZE) {
+        alert(`文件 ${file.name} 超过 20MB 限制`);
+        return;
+      }
+
+      if (!isSupportedFile(file)) {
+        alert(`不支持的文件类型: ${file.name}`);
+        return;
+      }
+
+      const attachment = {
+        id: Date.now() + Math.random(),
+        file: file,
+        name: file.name,
+        ext: getFileExtension(file.name),
+        type: file.type,
+        isImage: isImageFile(file),
+        base64: null,
+        preview: null
+      };
+
+      // 所有文件都读取为 Base64
+      const reader = new FileReader();
+      reader.onload = (e) => {
+        attachment.base64 = e.target.result; // Data URL 格式
+        if (attachment.isImage) {
+          attachment.preview = e.target.result; // 图片预览
+        }
+        renderAttachmentPreview();
+      };
+      reader.readAsDataURL(file);
+
+      attachments.push(attachment);
+      renderAttachmentPreview();
+    }
+
+    // 渲染附件预览
+    function renderAttachmentPreview() {
+      if (attachments.length === 0) {
+        attachmentPreview.classList.add('hidden');
+        return;
+      }
+
+      attachmentPreview.classList.remove('hidden');
+      previewContainer.innerHTML = attachments.map(att => {
+        if (att.isImage && att.preview) {
+          return `
+            <div class="relative group" data-id="${att.id}">
+              <img src="${att.preview}" class="w-20 h-20 object-cover rounded-lg border border-slate-200">
+              <button onclick="removeAttachment('${att.id}')" class="absolute -top-2 -right-2 w-5 h-5 bg-red-500 text-white rounded-full text-xs opacity-0 group-hover:opacity-100 transition-opacity">×</button>
+            </div>
+          `;
+        } else {
+          // 文档文件：显示图标和文件名
+          const icon = getFileIcon(att.ext);
+          return `
+            <div class="relative group flex items-center gap-2 px-3 py-2 bg-slate-50 rounded-lg border border-slate-200" data-id="${att.id}">
+              <span class="text-2xl">${icon}</span>
+              <div class="flex flex-col">
+                <span class="text-sm text-slate-700 font-medium truncate max-w-[150px]">${escapeHtml(att.name)}</span>
+                <span class="text-xs text-slate-400">${att.ext.toUpperCase().slice(1)}</span>
+              </div>
+              <button onclick="removeAttachment('${att.id}')" class="ml-2 w-5 h-5 bg-red-500 text-white rounded-full text-xs opacity-0 group-hover:opacity-100 transition-opacity flex-shrink-0">×</button>
+            </div>
+          `;
+        }
+      }).join('');
+    }
+
+    // 获取文件图标
+    function getFileIcon(ext) {
+      const icons = {
+        '.pdf': '📄',
+        '.doc': '📝', '.docx': '📝',
+        '.xls': '📊', '.xlsx': '📊',
+        '.ppt': '📽️', '.pptx': '📽️',
+        '.txt': '📃', '.md': '📑',
+        '.json': '{ }',
+        '.csv': '📈',
+        '.xml': '📰',
+        '.html': '🌐',
+        '.js': '📜', '.ts': '📜',
+        '.py': '🐍', '.java': '☕',
+        '.css': '🎨',
+        '.sql': '🗃️',
+        '.yaml': '⚙️', '.yml': '⚙️',
+        '.log': '📋'
+      };
+      return icons[ext] || '📁';
+    }
+
+    // 移除附件
+    window.removeAttachment = function(id) {
+      attachments = attachments.filter(a => a.id != id);
+      renderAttachmentPreview();
+    };
+
+    // 清空附件
+    function clearAttachments() {
+      attachments = [];
+      renderAttachmentPreview();
+    }
+
+    // ==================== Agent 列表渲染 ====================
+    function renderAgentList() {
+      agentList.innerHTML = agents.map(agent => {
+        const hasHistory = localStorage.getItem(getStorageKey(agent.id));
+        return `
+          <button data-agent-id="${agent.id}" class="agent-item w-full flex items-center gap-3 px-3 py-2.5 rounded-xl text-left transition-all duration-200 hover:bg-slate-100 group ${currentAgent?.id === agent.id ? 'bg-brand-50 border border-brand-200' : ''}">
+            <span class="text-xl">${agent.emoji}</span>
+            <div class="flex-1 min-w-0">
+              <p class="text-sm font-medium text-slate-700 truncate group-hover:text-slate-900">${agent.name}</p>
+              <p class="text-xs text-slate-400 truncate">${agent.identityName || 'AI 助手'}</p>
+            </div>
+            ${hasHistory ? '<span class="w-2 h-2 rounded-full bg-brand-400 flex-shrink-0" title="有对话记录"></span>' : ''}
+          </button>
+        `;
+      }).join('');
+
+      document.querySelectorAll('.agent-item').forEach(item => {
+        item.addEventListener('click', () => selectAgent(item.dataset.agentId));
+      });
+    }
+
+    // ==================== Agent 切换逻辑 ====================
+    function selectAgent(agentId) {
+      const agent = agents.find(a => a.id === agentId);
+      if (!agent) return;
+
+      currentAgent = agent;
+
+      // 从 localStorage 加载该 Agent 的全量历史记录
+      allHistory = loadHistory(agentId);
+
+      // 计算初始可见范围（最后 INITIAL_RENDER_COUNT 条）
+      if (allHistory.length > INITIAL_RENDER_COUNT) {
+        visibleStartIndex = allHistory.length - INITIAL_RENDER_COUNT;
+      } else {
+        visibleStartIndex = 0;
+      }
+
+      // 更新 UI
+      currentAgentEmoji.textContent = agent.emoji;
+      currentAgentName.textContent = agent.name;
+      currentAgentInfo.textContent = agent.identityName || 'AI 助手';
+      clearBtn.classList.remove('hidden');
+
+      renderAgentList();
+
+      // 渲染可见的消息
+      if (allHistory.length > 0) {
+        renderVisibleMessages();
+      } else {
+        showWelcome();
+      }
+    }
+
+    // ==================== 懒加载：渲染可见消息 ====================
+    function renderVisibleMessages(scrollToBottom = true) {
+      const visibleMessages = allHistory.slice(visibleStartIndex);
+
+      chatContainer.innerHTML = '';
+
+      // 如果还有更早的历史，显示"加载更多"提示
+      if (visibleStartIndex > 0) {
+        const loadMoreEl = document.createElement('div');
+        loadMoreEl.id = 'loadMoreTrigger';
+        loadMoreEl.className = 'flex justify-center py-3';
+        loadMoreEl.innerHTML = `
+          <button id="loadMoreBtn" class="flex items-center gap-2 px-4 py-2 text-sm text-brand-500 hover:text-brand-600 hover:bg-brand-50 rounded-lg transition-colors">
+            <svg class="w-4 h-4 animate-spin hidden" id="loadMoreSpinner" fill="none" viewBox="0 0 24 24">
+              <circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"></circle>
+              <path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
+            </svg>
+            <span id="loadMoreText">加载更早消息 (${visibleStartIndex} 条)</span>
+          </button>
+        `;
+        chatContainer.appendChild(loadMoreEl);
+
+        // 点击加载更多
+        document.getElementById('loadMoreBtn').addEventListener('click', loadMoreMessages);
+      }
+
+      // 渲染可见的消息
+      for (const msg of visibleMessages) {
+        if (msg.role === 'user') {
+          appendUserMessage(msg.content, msg.attachments || null, false);
+        } else if (msg.role === 'assistant') {
+          appendAssistantMessage(msg.content, false);
+        }
+      }
+
+      if (scrollToBottom) {
+        chatContainer.scrollTop = chatContainer.scrollHeight;
+      }
+    }
+
+    // ==================== 加载更多历史消息 ====================
+    function loadMoreMessages() {
+      if (isLoadingMore || visibleStartIndex <= 0) return;
+
+      isLoadingMore = true;
+      const spinner = document.getElementById('loadMoreSpinner');
+      const text = document.getElementById('loadMoreText');
+
+      if (spinner) spinner.classList.remove('hidden');
+      if (text) text.textContent = '加载中...';
+
+      // 模拟短暂延迟，让用户感知到加载过程
+      setTimeout(() => {
+        // 保存当前滚动位置（相对于底部的距离）
+        const oldScrollHeight = chatContainer.scrollHeight;
+
+        // 计算新的起始索引
+        const newStartIndex = Math.max(0, visibleStartIndex - LOAD_MORE_COUNT);
+        visibleStartIndex = newStartIndex;
+
+        // 重新渲染
+        renderVisibleMessages(false);
+
+        // 保持滚动位置（不跳动）
+        const newScrollHeight = chatContainer.scrollHeight;
+        chatContainer.scrollTop = newScrollHeight - oldScrollHeight;
+
+        isLoadingMore = false;
+      }, 150);
+    }
+
+    // 显示欢迎界面
+    function showWelcome() {
+      chatContainer.innerHTML = `
+        <div class="welcome flex flex-col items-center justify-center h-full min-h-[50vh] px-6">
+          <div class="w-16 h-16 rounded-2xl bg-gradient-to-br from-brand-500 to-brand-600 flex items-center justify-center shadow-xl shadow-brand-500/25 mb-5">
+            <span class="text-3xl">${currentAgent?.emoji || '🤖'}</span>
+          </div>
+          <h2 class="text-xl font-semibold text-slate-800 mb-2">${currentAgent?.name || 'AI 助手'}</h2>
+          <p class="text-slate-500 text-center max-w-sm text-sm leading-relaxed">你好，我是 ${currentAgent?.identityName || '你的 AI 助手'}。有什么我可以帮助你的吗？</p>
+        </div>
+      `;
+    }
+
+    // ==================== 消息渲染 ====================
+    function appendUserMessage(content, attachments = null, scroll = true) {
+      const msgEl = document.createElement('div');
+      msgEl.className = 'flex justify-end mb-4 px-4';
+
+      let attachmentHtml = '';
+      if (attachments && attachments.length > 0) {
+        attachmentHtml = '<div class="flex flex-wrap gap-2 mb-2">';
+        for (const att of attachments) {
+          if (att.isImage && att.preview) {
+            attachmentHtml += `<img src="${att.preview}" class="max-w-[200px] max-h-[150px] rounded-lg cursor-pointer hover:opacity-90" onclick="openImagePreview('${att.preview}')">`;
+          } else if (att.name) {
+            const icon = getFileIcon(getFileExtension(att.name));
+            attachmentHtml += `
+              <div class="flex items-center gap-1 px-2 py-1 bg-slate-200 rounded text-xs">
+                <span>${icon}</span>
+                <span class="text-slate-600">${escapeHtml(att.name)}</span>
+              </div>
+            `;
+          }
+        }
+        attachmentHtml += '</div>';
+      }
+
+      msgEl.innerHTML = `
+        <div class="max-w-[85%] sm:max-w-[70%]">
+          <div class="bg-user-bubble rounded-2xl rounded-tr-sm px-4 py-3">
+            ${attachmentHtml}
+            ${content ? `<div class="text-slate-700 text-[15px] leading-relaxed whitespace-pre-wrap">${escapeHtml(content)}</div>` : ''}
+          </div>
+        </div>
+      `;
+      chatContainer.appendChild(msgEl);
+      if (scroll) chatContainer.scrollTop = chatContainer.scrollHeight;
+      return msgEl;
+    }
+
+    // 图片预览
+    window.openImagePreview = function(src) {
+      const overlay = document.createElement('div');
+      overlay.className = 'fixed inset-0 bg-black/80 z-50 flex items-center justify-center cursor-pointer';
+      overlay.onclick = () => overlay.remove();
+      overlay.innerHTML = `<img src="${src}" class="max-w-[90vw] max-h-[90vh] object-contain">`;
+      document.body.appendChild(overlay);
+    };
+
+    function appendAssistantMessage(content = '', scroll = true) {
+      const msgEl = document.createElement('div');
+      msgEl.className = 'flex justify-start mb-4 px-4';
+      msgEl.innerHTML = `
+        <div class="flex gap-3 max-w-[85%] sm:max-w-[70%]">
+          <div class="flex-shrink-0 w-8 h-8 rounded-lg bg-gradient-to-br from-brand-400 to-brand-500 flex items-center justify-center mt-0.5">
+            <span class="text-sm">${currentAgent?.emoji || '🤖'}</span>
+          </div>
+          <div class="flex-1 min-w-0">
+            <div class="content markdown-content bg-white rounded-2xl rounded-tl-sm px-4 py-3 border border-slate-100 text-slate-700 text-[15px]">${content ? renderMarkdown(content) : '<span class="text-slate-400">思考中...</span>'}</div>
+          </div>
+        </div>
+      `;
+      chatContainer.appendChild(msgEl);
+      if (scroll) chatContainer.scrollTop = chatContainer.scrollHeight;
+      return msgEl;
+    }
+
+    function escapeHtml(text) {
+      const div = document.createElement('div');
+      div.textContent = text;
+      return div.innerHTML;
+    }
+
+    // ==================== 发送消息 ====================
+    async function sendMessage() {
+      const message = messageInput.value.trim();
+      const hasAttachments = attachments.length > 0;
+
+      if ((!message && !hasAttachments) || isLoading || !currentAgent) return;
+
+      messageInput.value = '';
+      messageInput.style.height = 'auto';
+
+      // 移除欢迎界面
+      const welcome = chatContainer.querySelector('.welcome');
+      if (welcome) welcome.remove();
+
+      // 保存当前附件副本
+      const currentAttachments = [...attachments];
+
+      // 显示用户消息（包含附件预览）
+      appendUserMessage(message, currentAttachments);
+
+      // 清空附件预览
+      clearAttachments();
+
+      // 构建请求体 - 简化格式
+      const requestBody = {
+        agentId: currentAgent.id,
+        message: message
+      };
+
+      // 添加文件（取第一个文件的 Base64 和文件名）
+      if (hasAttachments && currentAttachments[0]) {
+        const file = currentAttachments[0];
+        if (file.base64) {
+          requestBody.fileBase64 = file.base64;
+          requestBody.fileName = file.name;
+        }
+      }
+
+      // 添加到全量历史
+      const historyEntry = {
+        role: 'user',
+        content: message,
+        attachments: currentAttachments.map(a => ({
+          name: a.name,
+          isImage: a.isImage,
+          preview: a.preview,
+          ext: a.ext
+        }))
+      };
+      allHistory.push(historyEntry);
+
+      // 更新可见范围
+      if (visibleStartIndex > 0 && allHistory.length - visibleStartIndex > INITIAL_RENDER_COUNT + 5) {
+        visibleStartIndex = allHistory.length - INITIAL_RENDER_COUNT;
+        renderVisibleMessages(false);
+        appendAssistantMessage('');
+      }
+
+      // 保存到 localStorage
+      saveHistory(currentAgent.id, allHistory);
+
+      setLoading(true);
+      const assistantEl = appendAssistantMessage();
+
+      try {
+        const response = await fetch('/api/chat', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify(requestBody)
+        });
+
+        if (!response.ok) {
+          throw new Error(`服务器错误: ${response.status}`);
+        }
+
+        // 读取 SSE 流
+        const reader = response.body.getReader();
+        const decoder = new TextDecoder();
+        let fullContent = '';
+
+        while (true) {
+          const { done, value } = await reader.read();
+          if (done) break;
+
+          const chunk = decoder.decode(value, { stream: true });
+          const lines = chunk.split('\n');
+
+          for (const line of lines) {
+            if (line.startsWith('data: ')) {
+              const data = line.slice(6);
+              if (data === '[DONE]') continue;
+
+              try {
+                const json = JSON.parse(data);
+                const delta = json.choices?.[0]?.delta || {};
+
+                if (delta.content) {
+                  fullContent += delta.content;
+                  assistantEl.querySelector('.content').innerHTML = renderMarkdown(fullContent);
+                  chatContainer.scrollTop = chatContainer.scrollHeight;
+                }
+              } catch (e) { }
+            }
+          }
+        }
+
+        // 保存助手回复到全量历史
+        if (fullContent) {
+          allHistory.push({ role: 'assistant', content: fullContent });
+          // 实时保存到 localStorage
+          saveHistory(currentAgent.id, allHistory);
+          // 更新侧边栏指示器
+          renderAgentList();
+        }
+
+      } catch (error) {
+        console.error('错误:', error);
+        assistantEl.querySelector('.content').textContent = `错误: ${error.message}`;
+        assistantEl.querySelector('.content').classList.add('text-red-500');
+        // 出错时移除最后添加的用户消息
+        allHistory.pop();
+        saveHistory(currentAgent.id, allHistory);
+      } finally {
+        setLoading(false);
+      }
+    }
+
+    // ==================== 清空对话 ====================
+    function clearChat() {
+      if (!currentAgent) return;
+
+      // 清空全量历史
+      allHistory = [];
+      visibleStartIndex = 0;
+
+      // 删除 localStorage 数据
+      clearHistory(currentAgent.id);
+
+      // 更新侧边栏（移除历史指示器）
+      renderAgentList();
+
+      // 显示欢迎界面
+      showWelcome();
+    }
+
+    function setLoading(loading) {
+      isLoading = loading;
+      sendBtn.disabled = loading;
+      sendIcon.classList.toggle('hidden', loading);
+      loadingIcon.classList.toggle('hidden', !loading);
+    }
+
+    // ==================== 滚动监听（向上滚动加载更多）====================
+    function setupScrollListener() {
+      let scrollTimeout = null;
+
+      chatContainer.addEventListener('scroll', () => {
+        // 节流处理
+        if (scrollTimeout) return;
+
+        scrollTimeout = setTimeout(() => {
+          scrollTimeout = null;
+
+          // 检测是否滚动到顶部附近
+          if (chatContainer.scrollTop < 50 && visibleStartIndex > 0 && !isLoadingMore) {
+            loadMoreMessages();
+          }
+        }, 100);
+      });
+    }
+
+    // ==================== 初始化 ====================
+    async function init() {
+      try {
+        const response = await fetch('/api/agents');
+        agents = await response.json();
+        renderAgentList();
+
+        if (agents.length > 0) {
+          selectAgent(agents[0].id);
+        }
+      } catch (error) {
+        console.error('加载失败:', error);
+      }
+
+      // 事件监听
+      sendBtn.addEventListener('click', sendMessage);
+      messageInput.addEventListener('keydown', (e) => {
+        if (e.key === 'Enter' && !e.shiftKey) {
+          e.preventDefault();
+          sendMessage();
+        }
+      });
+      messageInput.addEventListener('input', () => {
+        messageInput.style.height = 'auto';
+        messageInput.style.height = Math.min(messageInput.scrollHeight, 160) + 'px';
+      });
+      clearBtn.addEventListener('click', clearChat);
+
+      // 文件上传
+      attachBtn.addEventListener('click', () => fileInput.click());
+      fileInput.addEventListener('change', (e) => {
+        for (const file of e.target.files) {
+          addAttachment(file);
+        }
+        fileInput.value = ''; // 清空以允许重复选择同一文件
+      });
+
+      // 粘贴图片支持
+      document.addEventListener('paste', (e) => {
+        const items = e.clipboardData?.items;
+        if (!items) return;
+
+        for (const item of items) {
+          if (item.type.startsWith('image/')) {
+            const file = item.getAsFile();
+            if (file) {
+              addAttachment(file);
+              e.preventDefault();
+            }
+          }
+        }
+      });
+
+      // 拖拽上传支持
+      chatContainer.addEventListener('dragover', (e) => {
+        e.preventDefault();
+        chatContainer.classList.add('bg-brand-50');
+      });
+      chatContainer.addEventListener('dragleave', () => {
+        chatContainer.classList.remove('bg-brand-50');
+      });
+      chatContainer.addEventListener('drop', (e) => {
+        e.preventDefault();
+        chatContainer.classList.remove('bg-brand-50');
+        for (const file of e.dataTransfer.files) {
+          addAttachment(file);
+        }
+      });
+
+      // 设置滚动监听
+      setupScrollListener();
+    }
+
+    init();
+  </script>
+</body>
+</html>

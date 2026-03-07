@@ -1,0 +1,18 @@
+{
+  "name": "openclaw-webui",
+  "version": "1.0.0",
+  "description": "极简局域网对话 WebUI for OpenClaw Gateway",
+  "main": "server.js",
+  "scripts": {
+    "start": "node server.js"
+  },
+  "dependencies": {
+    "dotenv": "^17.3.1",
+    "express": "^4.18.2"
+  },
+  "author": "",
+  "license": "MIT",
+  "devDependencies": {
+    "ws": "^8.19.0"
+  }
+}
