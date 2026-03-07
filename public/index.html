@@ -725,7 +725,7 @@
     }
 
     // ==================== 清空对话 ====================
-    function clearChat() {
+    async function clearChat() {
       if (!currentAgent) return;
 
       // 清空全量历史
@@ -734,6 +734,18 @@
 
       // 删除 localStorage 数据
       clearHistory(currentAgent.id);
+
+      // 重置后端 Session ID（关键：让 Gateway 也清空上下文）
+      try {
+        await fetch('/api/session/reset', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ agentId: currentAgent.id })
+        });
+        console.log(`[Session] Agent ${currentAgent.id} Session 已重置`);
+      } catch (error) {
+        console.error('[Session] 重置失败:', error);
+      }
 
       // 更新侧边栏（移除历史指示器）
       renderAgentList();

@@ -5,6 +5,7 @@
  * 支持图片上传：本地文件落盘 + 路径注入策略
  *
  * 环境配置：通过 .env 文件或环境变量配置
+ * Session 绑定：通过 x-openclaw-session-id header 传递
  */
 
 require('dotenv').config();
@@ -57,14 +58,88 @@ if (!GATEWAY_TOKEN) {
 // 上传目录：使用系统临时目录，跨平台兼容
 const UPLOAD_DIR = path.join(os.tmpdir(), 'openclaw_uploads');
 
+// Session 存储目录
+const SESSION_DIR = path.join(os.homedir(), '.openclaw-webui');
+
 // 请求超时
 const REQUEST_TIMEOUT = 120000;
 
-// 确保上传目录存在
+// 确保目录存在
 if (!fs.existsSync(UPLOAD_DIR)) {
   fs.mkdirSync(UPLOAD_DIR, { recursive: true });
   console.log(`[上传] 创建上传目录: ${UPLOAD_DIR}`);
 }
+if (!fs.existsSync(SESSION_DIR)) {
+  fs.mkdirSync(SESSION_DIR, { recursive: true });
+  console.log(`[Session] 创建 Session 目录: ${SESSION_DIR}`);
+}
+
+// ==================== Session 管理 ====================
+// 内存中的 Session ID 映射：agentId -> sessionId
+let agentSessions = {};
+
+// Session 文件路径
+const SESSION_FILE = path.join(SESSION_DIR, 'sessions.json');
+
+/**
+ * 加载持久化的 Session ID
+ */
+function loadSessions() {
+  try {
+    if (fs.existsSync(SESSION_FILE)) {
+      const data = fs.readFileSync(SESSION_FILE, 'utf8');
+      agentSessions = JSON.parse(data);
+      console.log(`[Session] 加载了 ${Object.keys(agentSessions).length} 个 Session`);
+    }
+  } catch (error) {
+    console.error(`[Session] 加载失败: ${error.message}`);
+    agentSessions = {};
+  }
+}
+
+/**
+ * 保存 Session ID 到文件
+ */
+function saveSessions() {
+  try {
+    fs.writeFileSync(SESSION_FILE, JSON.stringify(agentSessions, null, 2));
+  } catch (error) {
+    console.error(`[Session] 保存失败: ${error.message}`);
+  }
+}
+
+/**
+ * 获取或创建 Agent 的 Session ID
+ * @param {string} agentId
+ * @returns {string} Session ID
+ */
+function getOrCreateSessionId(agentId) {
+  if (!agentSessions[agentId]) {
+    // 生成新的 Session ID：webui_<agentId>_<timestamp>
+    const sessionId = `webui_${agentId}_${Date.now()}`;
+    agentSessions[agentId] = sessionId;
+    saveSessions();
+    console.log(`[Session] 为 Agent ${agentId} 创建新 Session: ${sessionId}`);
+  }
+  return agentSessions[agentId];
+}
+
+/**
+ * 重置 Agent 的 Session ID（清空会话时调用）
+ * @param {string} agentId
+ * @returns {string} 新的 Session ID
+ */
+function resetSessionId(agentId) {
+  const oldSessionId = agentSessions[agentId];
+  const newSessionId = `webui_${agentId}_${Date.now()}`;
+  agentSessions[agentId] = newSessionId;
+  saveSessions();
+  console.log(`[Session] Agent ${agentId} Session 已重置: ${oldSessionId} -> ${newSessionId}`);
+  return newSessionId;
+}
+
+// 启动时加载 Session
+loadSessions();
 
 // ==================== 配置文件读取 ====================
 let agents = [];
@@ -112,6 +187,31 @@ app.get('/api/agents', (req, res) => {
 });
 
 /**
+ * GET /api/session/:agentId
+ * 获取指定 Agent 的 Session ID
+ */
+app.get('/api/session/:agentId', (req, res) => {
+  const { agentId } = req.params;
+  const sessionId = agentSessions[agentId] || null;
+  res.json({ agentId, sessionId });
+});
+
+/**
+ * POST /api/session/reset
+ * 重置指定 Agent 的 Session（清空会话时调用）
+ */
+app.post('/api/session/reset', (req, res) => {
+  const { agentId } = req.body;
+
+  if (!agentId) {
+    return res.status(400).json({ error: '缺少 agentId' });
+  }
+
+  const newSessionId = resetSessionId(agentId);
+  res.json({ agentId, sessionId: newSessionId, message: 'Session 已重置' });
+});
+
+/**
  * POST /api/chat
  * 代理聊天请求到 Gateway OpenAI 兼容 API
  *
@@ -119,14 +219,17 @@ app.get('/api/agents', (req, res) => {
  * - 纯文本: { agentId, message }
  * - 带文件: { agentId, message, fileBase64, fileName }
  *
- * 文件处理策略：本地文件落盘 + 路径注入
+ * Session 绑定：通过 x-openclaw-session-id header 传递
  */
 app.post('/api/chat', (req, res) => {
-  const { agentId, message, fileBase64, fileName } = req.body;
+  const { agentId, message, fileBase64, fileName, sessionId: clientSessionId } = req.body;
 
   if (!agentId || !message) {
     return res.status(400).json({ error: '缺少 agentId 或 message' });
   }
+
+  // 获取 Session ID（优先使用客户端传递的，否则获取或创建）
+  const sessionId = clientSessionId || getOrCreateSessionId(agentId);
 
   let finalMessage = message;
 
@@ -174,7 +277,7 @@ app.post('/api/chat', (req, res) => {
     stream: true
   };
 
-  console.log(`[聊天] Agent: ${agentId}, 消息: ${message.substring(0, 50)}...${fileBase64 ? ` [含文件: ${fileName}]` : ''}`);
+  console.log(`[聊天] Agent: ${agentId}, Session: ${sessionId}, 消息: ${message.substring(0, 50)}...${fileBase64 ? ` [含文件: ${fileName}]` : ''}`);
 
   // 发送请求到 Gateway
   const gatewayReq = http.request({
@@ -185,7 +288,8 @@ app.post('/api/chat', (req, res) => {
     headers: {
       'Content-Type': 'application/json',
       'Authorization': `Bearer ${GATEWAY_TOKEN}`,
-      'x-openclaw-agent-id': agentId
+      'x-openclaw-agent-id': agentId,
+      'x-openclaw-session-id': sessionId  // 关键：绑定 Session
     },
     timeout: REQUEST_TIMEOUT
   }, (gatewayRes) => {
@@ -240,6 +344,7 @@ app.listen(PORT, '0.0.0.0', () => {
   console.log(`  局域网访问: http://<服务器IP>:${PORT}`);
   console.log(`  Gateway API: http://${GATEWAY_HOST}:${GATEWAY_PORT}/v1/chat/completions`);
   console.log(`  上传目录: ${UPLOAD_DIR}`);
+  console.log(`  Session 目录: ${SESSION_DIR}`);
   console.log('========================================');
   console.log('');
 });
