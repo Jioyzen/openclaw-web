@@ -108,6 +108,14 @@
           <div class="px-3 py-8 text-center text-slate-400 text-sm">加载中...</div>
         </nav>
       </div>
+
+      <!-- 底部状态栏 -->
+      <div class="p-3 border-t border-slate-100 bg-slate-50/50">
+        <div class="flex items-center gap-2 text-xs text-slate-500">
+          <span id="wsStatusDot" class="w-2 h-2 rounded-full bg-slate-300"></span>
+          <span id="wsStatusText">未连接</span>
+        </div>
+      </div>
     </aside>
 
     <!-- 主区域 -->
@@ -204,36 +212,36 @@
     }
 
     // ==================== 配置常量 ====================
-    const STORAGE_PREFIX = 'openclaw_chat_history_';
     const INITIAL_RENDER_COUNT = 20;    // 初始渲染消息数
     const LOAD_MORE_COUNT = 20;         // 每次加载更多消息数
 
-    // ==================== LocalStorage 持久化工具 ====================
-    function getStorageKey(agentId) {
-      return STORAGE_PREFIX + agentId;
-    }
-
-    function saveHistory(agentId, historyData) {
+    // ==================== 服务端持久化存储工具 ====================
+    async function saveHistory(agentId, historyData) {
       try {
-        localStorage.setItem(getStorageKey(agentId), JSON.stringify(historyData));
+        await fetch(`/api/history/${agentId}`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ history: historyData })
+        });
       } catch (e) {
         console.error('保存历史失败:', e);
       }
     }
 
-    function loadHistory(agentId) {
+    async function loadHistory(agentId) {
       try {
-        const data = localStorage.getItem(getStorageKey(agentId));
-        return data ? JSON.parse(data) : [];
+        const response = await fetch(`/api/history/${agentId}`);
+        const data = await response.json();
+        return data.history || [];
       } catch (e) {
         console.error('加载历史失败:', e);
         return [];
       }
     }
 
-    function clearHistory(agentId) {
+    async function clearHistory(agentId) {
       try {
-        localStorage.removeItem(getStorageKey(agentId));
+        await fetch(`/api/history/${agentId}`, { method: 'DELETE' });
       } catch (e) {
         console.error('清空历史失败:', e);
       }
@@ -389,18 +397,52 @@
       renderAttachmentPreview();
     }
 
+    // ==================== WebSocket 状态更新 ====================
+    async function updateWsStatus() {
+      try {
+        const response = await fetch('/api/status');
+        const data = await response.json();
+        const dot = document.getElementById('wsStatusDot');
+        const text = document.getElementById('wsStatusText');
+
+        if (data.wsConnected) {
+          dot.className = 'w-2 h-2 rounded-full bg-green-500';
+          text.textContent = `WebSocket 已连接`;
+        } else {
+          dot.className = 'w-2 h-2 rounded-full bg-red-400';
+          text.textContent = 'WebSocket 未连接';
+        }
+      } catch (e) {
+        const dot = document.getElementById('wsStatusDot');
+        const text = document.getElementById('wsStatusText');
+        dot.className = 'w-2 h-2 rounded-full bg-slate-300';
+        text.textContent = '连接异常';
+      }
+    }
+
     // ==================== Agent 列表渲染 ====================
+    let historyCounts = {};  // 缓存聊天记录条数
+
+    async function fetchHistoryCounts() {
+      try {
+        const response = await fetch('/api/history-counts');
+        historyCounts = await response.json();
+        renderAgentList();
+      } catch (e) {
+        console.error('获取历史条数失败:', e);
+      }
+    }
+
     function renderAgentList() {
       agentList.innerHTML = agents.map(agent => {
-        const hasHistory = localStorage.getItem(getStorageKey(agent.id));
+        const count = historyCounts[agent.id] || 0;
         return `
           <button data-agent-id="${agent.id}" class="agent-item w-full flex items-center gap-3 px-3 py-2.5 rounded-xl text-left transition-all duration-200 hover:bg-slate-100 group ${currentAgent?.id === agent.id ? 'bg-brand-50 border border-brand-200' : ''}">
             <span class="text-xl">${agent.emoji}</span>
             <div class="flex-1 min-w-0">
               <p class="text-sm font-medium text-slate-700 truncate group-hover:text-slate-900">${agent.name}</p>
-              <p class="text-xs text-slate-400 truncate">${agent.identityName || 'AI 助手'}</p>
+              ${count > 0 ? `<div class="text-[10px] mt-1 flex items-center gap-1 text-slate-400"><svg class="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M8 12h.01M12 12h.01M16 12h.01M21 12c0 4.418-4.03 8-9 8a9.863 9.863 0 01-4.255-.949L3 20l1.395-3.72C3.512 15.042 3 13.574 3 12c0-4.418 4.03-8 9-8s9 3.582 9 8z"></path></svg> ${count} 条对话</div>` : ''}
             </div>
-            ${hasHistory ? '<span class="w-2 h-2 rounded-full bg-brand-400 flex-shrink-0" title="有对话记录"></span>' : ''}
           </button>
         `;
       }).join('');
@@ -411,21 +453,37 @@
     }
 
     // ==================== Agent 切换逻辑 ====================
-    function selectAgent(agentId) {
+    function selectAgent(agentId, saveToStorage = true) {
       const agent = agents.find(a => a.id === agentId);
       if (!agent) return;
 
       currentAgent = agent;
 
-      // 从 localStorage 加载该 Agent 的全量历史记录
-      allHistory = loadHistory(agentId);
-
-      // 计算初始可见范围（最后 INITIAL_RENDER_COUNT 条）
-      if (allHistory.length > INITIAL_RENDER_COUNT) {
-        visibleStartIndex = allHistory.length - INITIAL_RENDER_COUNT;
-      } else {
-        visibleStartIndex = 0;
+      // 保存当前选择的 agent 到 localStorage（客户端状态，保留）
+      if (saveToStorage) {
+        try {
+          localStorage.setItem('openclaw_selected_agent', agentId);
+        } catch (e) {}
       }
+
+      // 从服务端加载该 Agent 的历史记录（异步）
+      loadHistory(agentId).then(history => {
+        allHistory = history;
+
+        // 计算初始可见范围（最后 INITIAL_RENDER_COUNT 条）
+        if (allHistory.length > INITIAL_RENDER_COUNT) {
+          visibleStartIndex = allHistory.length - INITIAL_RENDER_COUNT;
+        } else {
+          visibleStartIndex = 0;
+        }
+
+        // 渲染可见的消息
+        if (allHistory.length > 0) {
+          renderVisibleMessages();
+        } else {
+          showWelcome();
+        }
+      });
 
       // 更新 UI
       currentAgentEmoji.textContent = agent.emoji;
@@ -434,13 +492,6 @@
       clearBtn.classList.remove('hidden');
 
       renderAgentList();
-
-      // 渲染可见的消息
-      if (allHistory.length > 0) {
-        renderVisibleMessages();
-      } else {
-        showWelcome();
-      }
     }
 
     // ==================== 懒加载：渲染可见消息 ====================
@@ -479,7 +530,10 @@
       }
 
       if (scrollToBottom) {
-        chatContainer.scrollTop = chatContainer.scrollHeight;
+        // 使用 requestAnimationFrame 确保 DOM 完全渲染后再滚动
+        requestAnimationFrame(() => {
+          chatContainer.scrollTop = chatContainer.scrollHeight;
+        });
       }
     }
 
@@ -655,7 +709,7 @@
         appendAssistantMessage('');
       }
 
-      // 保存到 localStorage
+      // 保存到服务端
       saveHistory(currentAgent.id, allHistory);
 
       setLoading(true);
@@ -706,7 +760,7 @@
         // 保存助手回复到全量历史
         if (fullContent) {
           allHistory.push({ role: 'assistant', content: fullContent });
-          // 实时保存到 localStorage
+          // 实时保存到服务端
           saveHistory(currentAgent.id, allHistory);
           // 更新侧边栏指示器
           renderAgentList();
@@ -732,23 +786,8 @@
       allHistory = [];
       visibleStartIndex = 0;
 
-      // 删除 localStorage 数据
+      // 删除服务端存储的聊天历史（不重置 Session）
       clearHistory(currentAgent.id);
-
-      // 重置后端 Session ID（关键：让 Gateway 也清空上下文）
-      try {
-        await fetch('/api/session/reset', {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ agentId: currentAgent.id })
-        });
-        console.log(`[Session] Agent ${currentAgent.id} Session 已重置`);
-      } catch (error) {
-        console.error('[Session] 重置失败:', error);
-      }
-
-      // 更新侧边栏（移除历史指示器）
-      renderAgentList();
 
       // 显示欢迎界面
       showWelcome();
@@ -785,10 +824,29 @@
       try {
         const response = await fetch('/api/agents');
         agents = await response.json();
+
+        // 获取聊天记录条数
+        await fetchHistoryCounts();
+
+        // 更新 WebSocket 状态
+        updateWsStatus();
+        setInterval(updateWsStatus, 10000);  // 每10秒更新一次
+
         renderAgentList();
 
         if (agents.length > 0) {
-          selectAgent(agents[0].id);
+          // 尝试从 localStorage 恢复上次选择的 agent
+          let selectedAgentId = null;
+          try {
+            selectedAgentId = localStorage.getItem('openclaw_selected_agent');
+          } catch (e) {}
+
+          // 验证保存的 agent 是否仍然有效
+          if (selectedAgentId && agents.find(a => a.id === selectedAgentId)) {
+            selectAgent(selectedAgentId, false);
+          } else {
+            selectAgent(agents[0].id, false);
+          }
         }
       } catch (error) {
         console.error('加载失败:', error);

@@ -8,11 +8,9 @@
   },
   "dependencies": {
     "dotenv": "^17.3.1",
-    "express": "^4.18.2"
+    "express": "^4.18.2",
+    "ws": "^8.19.0"
   },
   "author": "",
-  "license": "MIT",
-  "devDependencies": {
-    "ws": "^8.19.0"
-  }
+  "license": "MIT"
 }
